@@ -844,10 +844,10 @@ impl Game<'_> {
     /// While a Clicker button is held, alternate its mapped keys down/up every 50 ms (20 CPS).
     /// The first press happens on touch-down; lifting the finger always takes the normal release path.
     fn touch_clicker_frame(&mut self, event_loop: &dyn EventLoopCtl) -> Result<()> {
-        const PERIOD: Duration = Duration::from_millis(50);
+        const HALF_PERIOD: Duration = Duration::from_millis(25);
         let now = Instant::now();
         let due: Vec<u16> = self.touch.clicker_at.iter()
-            .filter_map(|(&id, &at)| (now.duration_since(at) >= PERIOD).then_some(id))
+            .filter_map(|(&id, &at)| (now.duration_since(at) >= HALF_PERIOD).then_some(id))
             .collect();
         for id in due {
             let Some(keys) = self.touch.custom_keys.get(&id).cloned() else {
@@ -865,7 +865,10 @@ impl Game<'_> {
                 }
                 self.touch.clicker_released.insert(id);
             }
-            self.touch.clicker_at.insert(id, now);
+            // Keep the cadence anchored to the scheduled edge, not render-frame time: at 60 Hz
+            // this yields press edges every 50 ms instead of drifting down to ~15 CPS.
+            let next = at + HALF_PERIOD;
+            self.touch.clicker_at.insert(id, if now.duration_since(at) > Duration::from_millis(100) { now } else { next });
         }
         Ok(())
     }
