@@ -1790,7 +1790,7 @@ mod tests {
     #[test]
     fn clicker_mode_round_trips_and_is_exclusive_with_toggle_and_swipe() {
         let mut settings = TouchSettings::default();
-        let id = settings.add_button();
+        let id = settings.add_button(633.0, 292.0);
         settings.set_button_toggle(id, true);
         settings.set_button_clicker(id, true);
         let button = settings.button(id).unwrap();
