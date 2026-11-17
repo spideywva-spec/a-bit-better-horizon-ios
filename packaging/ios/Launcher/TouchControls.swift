@@ -157,7 +157,7 @@ struct TouchConfiguration: Codable, Equatable {
     }
     func opacity(_ button: TouchButton) -> Double {
         guard let value = opacities[String(button.rawValue)], value.isFinite else { return 1 }
-        return min(1,max(0,value))
+        return min(1,max(0.1,value))
     }
     mutating func resize(_ button: TouchButton, factor: Double, in size: CGSize) {
         guard factor.isFinite, factor > 0, min(size.width,size.height) > 0 else { return }
@@ -407,7 +407,7 @@ private struct TouchLayoutEditor: View {
                             Button("Size −") { draft.resize(selected,factor:0.9,in:gui) }
                             Button("Size +") { draft.resize(selected,factor:1.1,in:gui) }
                             Text("Opacity")
-                            Slider(value:Binding(get:{ draft.opacity(selected) },set:{ draft.opacities[String(selected.rawValue)] = $0 }),in:0...1)
+                            Slider(value:Binding(get:{ draft.opacity(selected) },set:{ draft.opacities[String(selected.rawValue)] = $0 }),in:0.1...1)
                         }.padding(.horizontal,16).padding(.bottom,12)
                     }
 
