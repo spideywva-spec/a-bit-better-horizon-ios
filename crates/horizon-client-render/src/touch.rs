@@ -1063,6 +1063,7 @@ impl TouchSettings {
     pub fn set_button_toggle(&mut self, id: u16, toggle: bool) {
         if let Some(button) = self.buttons.get_mut(&id) {
             button.toggle = toggle;
+            if toggle { button.swipe = false; button.clicker = false; }
         }
     }
     pub fn set_button_swipe(&mut self, id: u16, swipe: bool) {
@@ -1784,6 +1785,25 @@ mod tests {
         assert!(hud[0] > pause[0]);
         assert!((hud[1] - pause[1]).abs() < 0.01);
         assert!((hud[2] - pause[2]).abs() < 0.01);
+    }
+
+    #[test]
+    fn clicker_mode_round_trips_and_is_exclusive_with_toggle_and_swipe() {
+        let mut settings = TouchSettings::default();
+        let id = settings.add_button();
+        settings.set_button_toggle(id, true);
+        settings.set_button_clicker(id, true);
+        let button = settings.button(id).unwrap();
+        assert!(button.clicker);
+        assert!(!button.toggle && !button.swipe);
+        let saved = settings.serialize();
+        let loaded = TouchSettings::parse(&saved);
+        assert!(loaded.button(id).unwrap().clicker);
+        assert!(!loaded.button(id).unwrap().toggle);
+        assert!(!loaded.button(id).unwrap().swipe);
+        settings.set_button_swipe(id, true);
+        assert!(settings.button(id).unwrap().swipe);
+        assert!(!settings.button(id).unwrap().clicker);
     }
 
     #[test]
