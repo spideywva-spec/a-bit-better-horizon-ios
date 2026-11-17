@@ -1538,6 +1538,7 @@ enum Act {
     /// color (the bool is the stroke).
     TouchToggle(u16),
     TouchSwipe(u16),
+    TouchClicker(u16),
     TouchColor(u16, bool),
     /// AI Agent: start or stop the repro recording.
     ToggleRecording,
@@ -3634,6 +3635,7 @@ impl OptionsUi {
                         switch("Toggle", custom.toggle, Act::TouchToggle(id)),
                         Some(switch("Swipe", custom.swipe, Act::TouchSwipe(id))),
                     ),
+                    Row::Buttons(switch("Clicker", custom.clicker, Act::TouchClicker(id)), None),
                     Row::Buttons(
                         color(false, custom.background),
                         Some(color(true, custom.stroke)),
@@ -5579,6 +5581,14 @@ impl OptionsUi {
                                 events.push(Event::Changed);
                             }
                         }
+                        Act::TouchClicker(id) => {
+                            let touch = s.edited_touch_mut(self.touch_editing_menus);
+                            if let Some(button) = touch.button(id) {
+                                let clicker = !button.clicker;
+                                touch.set_button_clicker(id, clicker);
+                                events.push(Event::Changed);
+                            }
+                        }
                         Act::TouchColor(id, stroke) => {
                             let touch = s.edited_touch_mut(self.touch_editing_menus);
                             if let Some(button) = touch.button(id) {
@@ -6661,6 +6671,14 @@ impl OptionsUi {
                             if let Some(button) = touch.button(id) {
                                 let swipe = !button.swipe;
                                 touch.set_button_swipe(id, swipe);
+                                events.push(Event::Changed);
+                            }
+                        }
+                        Act::TouchClicker(id) => {
+                            let touch = s.edited_touch_mut(self.touch_editing_menus);
+                            if let Some(button) = touch.button(id) {
+                                let clicker = !button.clicker;
+                                touch.set_button_clicker(id, clicker);
                                 events.push(Event::Changed);
                             }
                         }
@@ -7752,9 +7770,13 @@ mod tests {
             );
         };
         press(&mut ui, &mut s, Act::TouchToggle(id));
+        assert!(s.touch.button(id).unwrap().toggle);
         press(&mut ui, &mut s, Act::TouchSwipe(id));
         let button = s.touch.button(id).unwrap();
-        assert!(button.toggle && button.swipe);
+        assert!(button.swipe && !button.toggle);
+        press(&mut ui, &mut s, Act::TouchClicker(id));
+        let button = s.touch.button(id).unwrap();
+        assert!(button.clicker && !button.toggle && !button.swipe);
         assert_eq!(button.background, None);
         press(&mut ui, &mut s, Act::TouchColor(id, false));
         assert_eq!(
