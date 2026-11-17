@@ -219,6 +219,8 @@ pub struct CustomButton {
     /// The keys are held only while the finger stays on the button: sliding off lets go, sliding back
     /// presses again. Off, a press keeps its keys until the finger lifts.
     pub swipe: bool,
+    /// Repeats a press at 20 CPS while the finger remains down; release stops it immediately.
+    pub clicker: bool,
     /// A solid background color in place of vanilla's button sprite, and the stroke around it.
     pub background: Option<u32>,
     pub stroke: Option<u32>,
@@ -240,6 +242,7 @@ impl Default for CustomButton {
             opacity: 1.0,
             toggle: false,
             swipe: false,
+            clicker: false,
             background: None,
             stroke: None,
         }
@@ -529,7 +532,7 @@ fn unescape_name(name: &str) -> String {
 /// `button:`'s value: the id and the button, in either the old five-field format or the current one.
 fn parse_button(value: &str) -> Option<(u16, CustomButton)> {
     let parts: Vec<&str> = value.split(':').collect();
-    if parts.len() != 5 && parts.len() != 14 {
+    if parts.len() != 5 && parts.len() != 14 && parts.len() != 15 {
         return None;
     }
     let id = parts[0].trim().parse::<u16>().ok()?;
@@ -577,6 +580,7 @@ fn parse_button(value: &str) -> Option<(u16, CustomButton)> {
             opacity: clamp_unit(parts[4], 1.0, MIN_OPACITY, 1.0),
             toggle: parts[6].trim() == "1",
             swipe: parts[7].trim() == "1",
+            clicker: parts.get(14).is_some_and(|v| v.trim() == "1"),
             background: parse_color(parts[8]),
             stroke: parse_color(parts[9]),
         },
@@ -793,7 +797,7 @@ impl TouchSettings {
         for (id, button) in &self.buttons {
             let key = |slot: usize| button.keys[slot].as_deref().unwrap_or("");
             text.push_str(&format!(
-                "button:{id}:{},{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}\n",
+                "button:{id}:{},{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}\n",
                 button.placement.x,
                 button.placement.y,
                 button.width,
@@ -808,6 +812,7 @@ impl TouchSettings {
                 key(1),
                 key(2),
                 key(3),
+                u8::from(button.clicker),
             ));
         }
         text
@@ -1063,6 +1068,14 @@ impl TouchSettings {
     pub fn set_button_swipe(&mut self, id: u16, swipe: bool) {
         if let Some(button) = self.buttons.get_mut(&id) {
             button.swipe = swipe;
+            if swipe { button.clicker = false; button.toggle = false; }
+        }
+    }
+    /// Set hold-to-repeat mode; clicker is mutually exclusive with swipe and toggle.
+    pub fn set_button_clicker(&mut self, id: u16, clicker: bool) {
+        if let Some(button) = self.buttons.get_mut(&id) {
+            button.clicker = clicker;
+            if clicker { button.swipe = false; button.toggle = false; }
         }
     }
     /// The background (`stroke` false) or stroke color, `None` for vanilla's look.
@@ -1095,9 +1108,13 @@ impl TouchSettings {
     pub fn swipes(&self) -> BTreeSet<Control> {
         self.buttons
             .iter()
-            .filter(|(_, button)| button.swipe)
+            .filter(|(_, button)| button.swipe && !button.clicker)
             .map(|(id, _)| Control::Custom(*id))
             .collect()
+    }
+    /// The buttons that repeat their mapped press while a finger holds them.
+    pub fn clickers(&self) -> BTreeSet<u16> {
+        self.buttons.iter().filter(|(_, button)| button.clicker).map(|(id, _)| *id).collect()
     }
     /// What the button shows: the name the player gave it, or "NEW".
     pub fn button_label(&self, id: u16) -> String {
