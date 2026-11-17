@@ -93,10 +93,6 @@ pub(super) struct TouchInput {
     /// The keys and mouse buttons each custom button sent while it is held, in the order they were
     /// pressed, so its release sends the same ones in reverse even if the mapping changed meanwhile.
     custom_keys: std::collections::BTreeMap<u16, Vec<touch::CustomKey>>,
-    /// Last 20-CPS clicker transition for each finger-held custom button.
-    clicker_at: std::collections::BTreeMap<u16, Instant>,
-    /// Clicker buttons whose mapped keys are currently released between clicks.
-    clicker_released: BTreeSet<u16>,
     /// The toggle buttons that are holding their keys down.
     toggled: BTreeSet<u16>,
     /// The keys and mouse buttons the menus' layout's buttons are holding: a separate set, so a
@@ -609,8 +605,7 @@ impl Game<'_> {
                     .into_iter()
                     .try_for_each(|(control, at)| self.touch_release_late(event_loop, control, at))
             })
-            .and_then(|()| self.touch_act(event_loop, out, scale))
-            .and_then(|()| self.touch_clicker_frame(event_loop));
+            .and_then(|()| self.touch_act(event_loop, out, scale));
         if let Err(e) = result {
             log::warn!("Horizon: touch: {e}");
         }
@@ -810,12 +805,7 @@ impl Game<'_> {
         id: u16,
         pressed: bool,
     ) -> Result<()> {
-        let (toggle, clicker) = self.settings.touch.button(id)
-            .map_or((false, false), |b| (b.toggle && !b.clicker, b.clicker));
-        if !pressed {
-            self.touch.clicker_at.remove(&id);
-            self.touch.clicker_released.remove(&id);
-        }
+        let toggle = self.settings.touch.button(id).is_some_and(|b| b.toggle);
         if !pressed {
             if toggle {
                 return Ok(());
@@ -834,49 +824,14 @@ impl Game<'_> {
         }
         let keys = self.settings.touch.button_mappings(id);
         self.touch.custom_keys.insert(id, keys.clone());
-        if clicker { self.touch.clicker_at.insert(id, Instant::now()); }
         for key in keys {
             self.touch_custom_event(event_loop, key, ElementState::Pressed)?;
         }
         Ok(())
     }
 
-    /// While a Clicker button is held, alternate its mapped keys down/up every 50 ms (20 CPS).
-    /// The first press happens on touch-down; lifting the finger always takes the normal release path.
-    fn touch_clicker_frame(&mut self, event_loop: &dyn EventLoopCtl) -> Result<()> {
-        const HALF_PERIOD: Duration = Duration::from_millis(25);
-        let now = Instant::now();
-        let due: Vec<u16> = self.touch.clicker_at.iter()
-            .filter_map(|(&id, &at)| (now.duration_since(at) >= HALF_PERIOD).then_some(id))
-            .collect();
-        for id in due {
-            let Some(keys) = self.touch.custom_keys.get(&id).cloned() else {
-                self.touch.clicker_at.remove(&id);
-                self.touch.clicker_released.remove(&id);
-                continue;
-            };
-            if self.touch.clicker_released.remove(&id) {
-                for key in keys.iter().copied() {
-                    self.touch_custom_event(event_loop, key, ElementState::Pressed)?;
-                }
-            } else {
-                for key in keys.iter().rev().copied() {
-                    self.touch_custom_event(event_loop, key, ElementState::Released)?;
-                }
-                self.touch.clicker_released.insert(id);
-            }
-            // Keep the cadence anchored to the scheduled edge, not render-frame time: at 60 Hz
-            // this yields press edges every 50 ms instead of drifting down to ~15 CPS.
-            let next = at + HALF_PERIOD;
-            self.touch.clicker_at.insert(id, if now.duration_since(at) > Duration::from_millis(100) { now } else { next });
-        }
-        Ok(())
-    }
-
     /// Lets go of everything `id` pressed, in the reverse of the order it went down.
     fn touch_release_custom(&mut self, event_loop: &dyn EventLoopCtl, id: u16) -> Result<()> {
-        self.touch.clicker_at.remove(&id);
-        self.touch.clicker_released.remove(&id);
         let Some(keys) = self.touch.custom_keys.remove(&id) else {
             return Ok(());
         };
